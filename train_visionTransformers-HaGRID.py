@@ -8,7 +8,7 @@ import torch.optim as optim
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
-from efficientnet_pytorch import EfficientNet
+from torchvision.models import vit_b_16, ViT_B_16_Weights
 
 class HaGRID_Dataset(Dataset):
     def __init__(self, image_paths, labels, transform=None):
@@ -26,7 +26,8 @@ class HaGRID_Dataset(Dataset):
         if self.transform:
             image = self.transform(image)
         return image, label
-    
+
+
 # A helper function to extract the gesture label (removing the "train_val_" prefix)
 def extract_label(directory_path):
     directory_path = Path(directory_path)
@@ -39,7 +40,7 @@ def get_image_paths_and_labels(root_dir, classes):
     labels = []
 
     for idx, class_name in enumerate(classes):
-        subfolder = f"train_val_{class_name}"  
+        subfolder = f"train_val_{class_name}"
         class_dir = os.path.join(root_dir, subfolder)
 
         if not os.path.isdir(class_dir):
@@ -56,7 +57,7 @@ def get_image_paths_and_labels(root_dir, classes):
 
 
 # Paths
-path = os.path.realpath(os.path.dirname(__file__)) # Path to the current directory
+path = os.path.realpath(os.path.dirname(__file__))  # Path to the current directory
 train_images_dir = path + "/hagrid-sample/hagrid-sample-500k-384p/split/train"  # Path to train images (with subfolders)
 val_images_dir   = path + "/hagrid-sample/hagrid-sample-500k-384p/split/val"       # Path to validation images (with subfolders)
 annotations_dir  = path + "/hagrid-sample/hagrid-sample-500k-384p/ann_train_val"  # Path to JSON annotations
@@ -98,7 +99,7 @@ def load_annotations(annotations_dir):
                             y_max = y_min + height
                             bboxes.append([x_min, y_min, x_max, y_max])
                             labels.append(label)
-                    
+
                     # Only add annotations with matching lengths
                     if len(bboxes) == len(labels):
                         ground_truths[image_id]["bboxes"].extend(bboxes)
@@ -128,24 +129,25 @@ transform = transforms.Compose([
 
 # Create the datasets
 train_dataset = HaGRID_Dataset(train_image_paths, train_labels, transform=transform)
-val_dataset = HaGRID_Dataset(val_image_paths, val_labels, transform=transform)
+val_dataset   = HaGRID_Dataset(val_image_paths,   val_labels,   transform=transform)
 
 # Create the data loaders
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False)
 
 print("3 - Loaded", len(train_dataset), "training images and", len(val_dataset), "validation images.")
 
 # -----------------------------------------------------------------------------
-# 4. Load and Modify the EfficientNet Model for Gesture Classification
+# 4. Load and Modify the Vision Transformer Model for Gesture Classification
 # -----------------------------------------------------------------------------
-# Load a pre-trained EfficientNet-B0 model
-model = EfficientNet.from_pretrained('efficientnet-b0')
+# Load vit_b_16 from torchvision, with pretrained weights
+weights = ViT_B_16_Weights.DEFAULT
+model = vit_b_16(weights=weights)
 
-# Replace the final fully connected layer to match the number of gesture classes
-num_features = model._fc.in_features
+# Replace the final classification head to match the number of gesture classes
+num_features = model.heads.head.in_features
 num_gesture_classes = len(classes)
-model._fc = nn.Linear(num_features, num_gesture_classes)
+model.heads.head = nn.Linear(num_features, num_gesture_classes)
 
 # Move the model to the GPU (if available)
 if torch.backends.mps.is_available():
@@ -158,7 +160,7 @@ model = model.to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-print("4 - Model loaded and ready for training.")
+print("4 - Vision Transformer (ViT) model loaded and ready for training.")
 
 # -----------------------------------------------------------------------------
 # 5. Fine-tune the Model on the HaGRID Dataset
@@ -172,9 +174,8 @@ for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
     correct = 0
-
     total = 0
-    
+
     train_pbar = tqdm(train_loader, desc=f"Epoch [{epoch+1}/{num_epochs}] [TRAIN]")
     for images, labels in train_pbar:
         images, labels = images.to(device), labels.to(device)
@@ -187,11 +188,10 @@ for epoch in range(num_epochs):
         
         # Stats
         running_loss += loss.item() * images.size(0)
-        _, predicted = torch.max(outputs, 1)
+        _, predicted = torch.max(outputs, dim=1)
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
         
-        # Update tqdm postfix (shown to the right of the progress bar)
         train_pbar.set_postfix({
             "loss": f"{loss.item():.4f}",
             "acc": f"{(correct/total):.4f}"
@@ -199,7 +199,7 @@ for epoch in range(num_epochs):
     
     train_loss = running_loss / len(train_loader.dataset)
     train_acc = correct / total
-    print(f"\nEpoch {epoch+1}/{num_epochs} Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f})\n")
+    print(f"\nEpoch {epoch+1}/{num_epochs} Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}\n")
 
     # ------------------------
     # VALIDATION PHASE
@@ -217,7 +217,7 @@ for epoch in range(num_epochs):
             loss = criterion(outputs, labels)
             val_loss += loss.item() * images.size(0)
             
-            _, predicted = torch.max(outputs, 1)
+            _, predicted = torch.max(outputs, dim=1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
@@ -228,12 +228,11 @@ for epoch in range(num_epochs):
     
     val_loss /= len(val_loader.dataset)
     val_acc = correct / total
-    
-    # After each epoch, print summary
-    print(f"\nEpoch {epoch+1}/{num_epochs} Val Loss: {val_loss:.4f},   Val Acc: {val_acc:.4f}\n")
+
+    print(f"\nEpoch {epoch+1}/{num_epochs} Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}\n")
 
 # -----------------------------------------------------------------------------
 # 6. Save the Trained Model Checkpoint
 # -----------------------------------------------------------------------------
-torch.save(model.state_dict(), "EfficientNet_hagrid_gestures.pt")
-print("6 - Model checkpoint saved as 'EfficientNet_hagrid_gestures.pt'")
+torch.save(model.state_dict(), "ViT_hagrid_gestures.pt")
+print("6 - Model checkpoint saved as 'ViT_hagrid_gestures.pt'")
