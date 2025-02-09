@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn as nn
 from pathlib import Path
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
 from tqdm import tqdm
@@ -30,14 +30,14 @@ class HaGRID_Dataset(Dataset):
 def extract_label(directory_path):
     directory_path = Path(directory_path)
     directory_names = [dir.name for dir in directory_path.iterdir() if dir.is_dir()]
-    return [name.replace("test_val_", "") for name in directory_names]
+    return [name.replace("train_val_", "") for name in directory_names]
 
 # A helper function to get image paths and labels
 def get_image_paths_and_labels(root_dir, classes):
     image_paths = []
     labels = []
     for idx, class_name in enumerate(classes):
-        subfolder = f"test_val_{class_name}"
+        subfolder = f"train_val_{class_name}"
         class_dir = os.path.join(root_dir, subfolder)
         if not os.path.isdir(class_dir):
             print(f"[Warning] Directory {class_dir} not found.")
