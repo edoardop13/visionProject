@@ -130,13 +130,16 @@ with torch.no_grad():
 # -----------------------------------------------------------------------------
 # 6. Metrics (Accuracy, Classification Report, etc.)
 # -----------------------------------------------------------------------------
+# 6a) Simple accuracy
 correct_count = sum([1 for p, t in zip(all_preds, all_labels) if p == t])
 accuracy = correct_count / len(all_labels)
 print(f"\n6 - Test Accuracy: {accuracy:.4f}")
 
+# 6b) Classification report (requires scikit-learn)
 print("\n6 - Classification Report:")
 print(classification_report(all_labels, all_preds, target_names=classes))
 
+# 6c) Confusion matrix
 cm = confusion_matrix(all_labels, all_preds)
 print("6 - Confusion Matrix:")
 print(cm)
