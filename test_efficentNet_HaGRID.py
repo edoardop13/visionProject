@@ -106,7 +106,7 @@ print("3 - Model loaded.")
 # 4. Load Weights
 # -----------------------------------------------------------------------------
 # Load previous trained weights
-checkpoint_path = "EfficientNet_hagrid_gestures.pt"
+checkpoint_path = "EfficientNet_hagrid_gestures_best.pt"
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 model.eval()
 
